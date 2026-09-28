@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { products, Product } from './data/products';
-import { Search, ChevronLeft, Box, Ruler, Info, Package } from 'lucide-react';
+import { Search, ChevronLeft, Box, Ruler, Info, Package, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { generateCatalogPDF } from './utils/pdfGenerator';
 
 const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => 
@@ -15,6 +17,19 @@ const App: React.FC = () => {
       p.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery]);
+
+  const handleDownloadPDF = async () => {
+    if (filteredProducts.length === 0) return;
+    setIsDownloading(true);
+    try {
+      await generateCatalogPDF(filteredProducts);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Gagal mengunduh PDF. Silakan coba lagi.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
@@ -39,7 +54,7 @@ const App: React.FC = () => {
 
       <main className="max-w-2xl mx-auto p-4">
         {/* Search Bar */}
-        <div className="mb-6">
+        <div className="mb-4">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" size={20} />
             <input
@@ -58,6 +73,27 @@ const App: React.FC = () => {
               </button>
             )}
           </div>
+        </div>
+
+        {/* PDF Download Button */}
+        <div className="mb-6">
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isDownloading || filteredProducts.length === 0}
+            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 px-4 rounded-2xl font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 shadow-lg shadow-slate-900/10"
+          >
+            {isDownloading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Menyiapkan PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download size={18} />
+                <span>Download to PDF ({filteredProducts.length} SKU)</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Grid of SKUs */}
