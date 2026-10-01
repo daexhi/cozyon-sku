@@ -554,7 +554,7 @@ Spesifikasi:
   },
   'CZN-037': {
     sizes: ['36/37', '38/39', '40/41', '42/43', '44/45'],
-    colors: ['Biru', 'Coklat', 'Hijau', 'Hitam', 'Pink', 'Ungu', 'Taupe'],
+    colors: ['Biru', 'Coklat', 'Hijau', 'Hitam', 'Pink', 'Ungu', 'Taupe', 'Navy'],
     description: `CZN-037 Sandal Slop Wanita Motif Bear
 
 Sandal slop wanita CZN-037 hadir with desain motif emboss beruang yang lucu dan kekinian untuk tampilan kasual si kecil maupun dewasa. Mengusung model slip-on yang praktis, sandal ini sangat mudah dipakai dan dilepas. Dibuat dari bahan EVA yang ringan, fleksibel, empuk, dan mudah dibersihkan. Dilengkapi dengan sol tebal ±2,5 cm untuk memberikan pijakan yang super nyaman sekaligus membantu meredam benturan saat melangkah.
@@ -563,21 +563,21 @@ Spesifikasi:
 - Jenis Produk: Sandal Slop / Slip-On Wanita
 - Bahan/Material: EVA (Ringan, Empuk, Fleksibel & Mudah Dibersihkan)
 - Fitur Utama: Sol Tebal ±2,5 cm (Meredam Benturan), Motif Emboss Bear Lucu, Praktis Tanpa Tali
-- Pilihan Warna: Pink, Biru, Ungu, Hijau, Cokelat, dan Hitam
+- Pilihan Warna: Pink, Biru, Ungu, Hijau, Cokelat, Hitam, dan Navy
 - Penggunaan: Indoor & Outdoor (Sandal rumah, kamar, santai, dan aktivitas harian)`,
   },
   'CZN-038': {
     sizes: ['36/37', '38/39', '40/41', '42/43', '44/45'],
-    colors: ['Hitam', 'Pink', 'Biru', 'Hijau', 'Lilac', 'Coklat'],
+    colors: ['Hitam', 'Pink', 'Biru', 'Hijau', 'Lilac', 'Coklat', 'Navy'],
     description: `CZN-038 Sandal Rumah Unisex Motif Kucing
 
-Sandal selop CZN-038 hadir dengan desain motif kucing yang lucu dan simpel, cocok digunakan untuk pria maupun wanita. Mengusung model slip-on yang praktis, sandal ini sangat mudah dipakai dan dilepas tanpa repot. Dibuat dari bahan EVA fleksibel setebal ±2 cm yang sangat empuk, ringan, dan mampu meredam benturan saat melangkah. Sandal ini juga cepat kering dan tidak mudah bau, sehingga sangat ideal untuk penggunaan harian di area rumah, kamar mandi, hingga aktivitas santai di luar ruangan.
+Sandal selop CZN-038 hadir dengan desain motif kucing yang lucu dan simpel, cocok digunakan untuk pria maupun wanita. Mengusung model slip-on yang praktis, sandal ini sangat mudah dipakai dan dilepas tanpa repot. Dibuat dari bahan EVA fleksibel setebal ±2 cm yang sangat empuk, ringan, dan mampu meredam benturan saat melangkah. Sandal ini juga cepat kering dan tidak mudah bau, sehingga sangat ideal for penggunaan harian di area rumah, kamar mandi, hingga aktivitas santai di luar ruangan.
 
 Spesifikasi:
 - Jenis Produk: Sandal Rumah Selop / Slip-On Unisex
 - Bahan/Material: EVA Premium (Ringan, Empuk, Fleksibel, Cepat Kering & Tidak Mudah Bau)
 - Fitur Utama: Sol Anti-Slip, Tebal Sol ±2 cm, Meredam Benturan, Motif Kucing Lucu
-- Pilihan Warna: Tersedia 4 Warna (Pastel & Netral)
+- Pilihan Warna: Hitam, Pink, Biru, Hijau, Lilac, Coklat, dan Navy
 - Penggunaan: Indoor & Outdoor (Sandal rumah, kamar mandi, teras, dan aktivitas santai)`,
   },
   'CZN-039': {
