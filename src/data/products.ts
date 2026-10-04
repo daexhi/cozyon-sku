@@ -7,6 +7,20 @@ export interface Product {
   description: string;
   category: string;
   colors?: string[];
+  translations?: {
+    en?: {
+      name?: string;
+      category?: string;
+      description?: string;
+      colors?: string[];
+    };
+    zh?: {
+      name?: string;
+      category?: string;
+      description?: string;
+      colors?: string[];
+    };
+  };
 }
 
 const images = [
