@@ -1,37 +1,97 @@
 import { Product } from '../data/products';
+import bundledProducts from '../data/products.json';
 
 const STORAGE_KEY = 'cozyon_custom_products';
 
 /**
- * Fetches products from the backend server (/api/products) which reads src/data/products.json
- * If offline or server error, falls back to localStorage or bundled JSON.
+ * Returns stored products:
+ * 1. Checks localStorage (custom edits by admin)
+ * 2. Falls back to bundledProducts (all 37 factory default SKUs with complete translations)
+ * This guarantees the catalog ALWAYS has data, even on Vercel / Netlify / static hosting / offline.
+ */
+export const getStoredProducts = (): Product[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to parse stored products from localStorage', err);
+  }
+
+  // Guaranteed fallback: bundled products from products.json
+  if (Array.isArray(bundledProducts) && bundledProducts.length > 0) {
+    return bundledProducts as Product[];
+  }
+
+  return [];
+};
+
+/**
+ * Fetches products from backend server or static hosting with timeouts
  */
 export const fetchServerProducts = async (): Promise<Product[]> => {
+  const fetchWithTimeout = async (url: string, ms = 3000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (e) {
+      clearTimeout(id);
+      throw e;
+    }
+  };
+
+  // 1. Try Express API endpoint
   try {
-    const res = await fetch('/api/products');
-    if (res.ok) {
+    const res = await fetchWithTimeout('/api/products');
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        // Cache to localStorage for offline support
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         return data;
       }
     }
   } catch (err) {
-    console.warn('[Storage] Could not fetch /api/products, falling back to local cache', err);
+    // API server not present or timeout
   }
+
+  // 2. Try static public file (works on Vercel, Netlify, CDN)
+  try {
+    const res = await fetchWithTimeout('/data/products.json');
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        if (!localStorage.getItem(STORAGE_KEY)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+        return data;
+      }
+    }
+  } catch (err) {
+    // Public fetch failed or timeout
+  }
+
   return getStoredProducts();
 };
 
 /**
- * Saves products to the backend code structure (/api/products -> src/data/products.json)
- * and syncs to localStorage.
+ * Saves products to backend codebase (if running) and client storage
  */
-export const saveProductsToCodebase = async (products: Product[]): Promise<{ success: boolean; message?: string }> => {
-  // 1. Sync immediately to client-side localStorage
+export const saveProductsToCodebase = async (
+  products: Product[]
+): Promise<{ success: boolean; message?: string }> => {
+  // 1. Always save immediately to client localStorage
   saveStoredProducts(products);
 
-  // 2. Persist directly to server code structure on disk
+  // 2. Try to persist to server filesystem (if server is active)
   try {
     const res = await fetch('/api/products', {
       method: 'POST',
@@ -43,33 +103,19 @@ export const saveProductsToCodebase = async (products: Product[]): Promise<{ suc
 
     if (res.ok) {
       const result = await res.json();
-      return { success: true, message: `Tersimpan ke struktur kode server (${result.count} SKU)!` };
-    } else {
-      const err = await res.json();
-      return { success: false, message: 'Server error: ' + (err.error || 'Unknown error') };
+      return {
+        success: true,
+        message: `Tersimpan ke struktur kode server (${result.count} SKU)!`,
+      };
     }
   } catch (err: any) {
-    console.warn('[Storage] API write failed (offline or dev server):', err);
-    return { success: true, message: 'Tersimpan ke cache lokal (server offline).' };
-  }
-};
-
-export const getStoredProducts = (): Product[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to parse stored products', err);
+    console.warn('[Storage] Server write unavailable (static deploy/offline):', err);
   }
 
-  // If no cache, return empty array and let the server fetch handle it.
-  // This drastically reduces initial bundle size by not embedding the 120KB+ JSON/TS data.
-  return [];
+  return {
+    success: true,
+    message: 'Tersimpan ke penyimpanan lokal aplikasi.',
+  };
 };
 
 export const saveStoredProducts = (products: Product[]): void => {
@@ -86,8 +132,7 @@ export const resetStoredProducts = (): Product[] => {
   } catch (err) {
     console.error('Failed to clear stored products', err);
   }
-  // Return empty and trigger fresh fetch
-  return [];
+  return [...(bundledProducts as Product[])];
 };
 
 export const availableWarehouseImages: string[] = [

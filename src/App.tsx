@@ -48,13 +48,25 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(products.length === 0);
 
   useEffect(() => {
-    // Load persisted products directly from the server code structure
-    fetchServerProducts().then((serverData) => {
-      if (serverData && serverData.length > 0) {
-        setProducts(serverData);
+    // Attempt to load from server/static, but don't hang the UI indefinitely
+    const loadData = async () => {
+      try {
+        const serverData = await fetchServerProducts();
+        if (serverData && serverData.length > 0) {
+          setProducts(serverData);
+        }
+      } catch (error) {
+        console.error('Failed to load products:', error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+    };
+    
+    loadData();
+    
+    // Safety timeout: ensure loading finishes even if network hangs
+    const timer = setTimeout(() => setIsLoading(false), 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Language State

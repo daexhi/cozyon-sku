@@ -4,8 +4,10 @@ import App from './App.tsx';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 
-// Register service worker
-registerSW({ immediate: true });
+// Register service worker in production
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.PROD) {
+  registerSW({ immediate: true });
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
