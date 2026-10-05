@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Footwear SKU and warehouse inventory item",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "description": "Unique SKU code e.g. CZN-001" },
+        "name": { "type": "string", "description": "Product model name" },
+        "category": { "type": "string", "description": "Category such as Casual, Formal, Sneaker, Sandal" },
+        "image": { "type": "string", "description": "Primary product image path or URL" },
+        "gallery": { "type": "array", "description": "List of gallery image paths" },
+        "colors": { "type": "array", "description": "List of color variants" },
+        "sizes": { "type": "array", "description": "List of available shoe sizes" },
+        "description": { "type": "string", "description": "Detailed product description" },
+        "translations": { "type": "object", "description": "Localized descriptions and names" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last modification" }
+      },
+      "required": ["sku", "name", "category", "image", "sizes", "description"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "#/entities/Product",
+      "description": "Global catalog products collection accessible across all devices and browsers"
+    }
+  }
+}

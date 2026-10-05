@@ -4,6 +4,9 @@ import {
   availableWarehouseImages,
   saveProductsToCodebase,
   resetStoredProducts,
+  saveProductToCloud,
+  deleteProductFromCloud,
+  resetCloudCatalog,
 } from '../utils/productStorage';
 import { Language, translations } from '../i18n/translations';
 import {
@@ -31,7 +34,8 @@ import {
   Package,
   Languages,
   Server,
-  CloudCheck,
+  Cloud,
+  Database,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -223,28 +227,46 @@ export const AdminDashboard: React.FC<Props> = ({
 
     setProducts(nextProducts);
 
-    // Save directly to the code structure via server API
-    const res = await saveProductsToCodebase(nextProducts);
-    setIsSaving(false);
-    setEditingProduct(null);
-
-    showToast(`✓ Perubahan disimpan ke struktur kode server (${nextProducts.length} SKU)!`);
+    // Save to Cloud Firestore & Local / Server
+    try {
+      await saveProductToCloud(updatedProduct);
+      await saveProductsToCodebase(nextProducts);
+      showToast(`✓ SKU ${updatedProduct.sku} tersimpan di Cloud Database & tersinkron ke semua browser!`);
+    } catch (err) {
+      console.error('Failed to save to cloud:', err);
+      showToast(`Tersimpan lokal (${nextProducts.length} SKU).`);
+    } finally {
+      setIsSaving(false);
+      setEditingProduct(null);
+    }
   };
 
   const handleDeleteProduct = async (sku: string) => {
     const nextProducts = products.filter((p) => p.sku !== sku);
     setProducts(nextProducts);
-    await saveProductsToCodebase(nextProducts);
+    try {
+      await deleteProductFromCloud(sku);
+      await saveProductsToCodebase(nextProducts);
+      showToast(`✓ SKU ${sku} berhasil dihapus dari Cloud Database.`);
+    } catch (err) {
+      console.error('Failed to delete from cloud:', err);
+      showToast(`SKU ${sku} dihapus dari memori lokal.`);
+    }
     setConfirmDeleteSku(null);
-    showToast(`SKU ${sku} berhasil dihapus dari struktur kode.`);
   };
 
   const handleResetCatalog = async () => {
     if (window.confirm(t.confirmResetCatalog)) {
-      const initial = resetStoredProducts();
-      setProducts(initial);
-      await saveProductsToCodebase(initial);
-      showToast('Katalog berhasil direset ke struktur bawaan awal!');
+      try {
+        const initial = await resetCloudCatalog();
+        setProducts(initial);
+        await saveProductsToCodebase(initial);
+        showToast('Katalog berhasil direset ke 37 SKU bawaan di Cloud Database!');
+      } catch (err) {
+        const initial = resetStoredProducts();
+        setProducts(initial);
+        showToast('Katalog direset ke default lokal.');
+      }
     }
   };
 
@@ -272,8 +294,11 @@ export const AdminDashboard: React.FC<Props> = ({
         const parsed = JSON.parse(event.target?.result as string);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setProducts(parsed);
+          for (const item of parsed) {
+            await saveProductToCloud(item);
+          }
           await saveProductsToCodebase(parsed);
-          showToast(`Berhasil mengimpor & menyimpan ${parsed.length} SKU ke kode server.`);
+          showToast(`Berhasil mengimpor & menyimpan ${parsed.length} SKU ke Cloud Database.`);
         } else {
           alert('Format JSON tidak valid atau data kosong.');
         }
@@ -355,13 +380,13 @@ export const AdminDashboard: React.FC<Props> = ({
               <div>
                 <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
                   <span>Cozyon Admin</span>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded-md font-mono flex items-center gap-1">
-                    <Server size={10} />
-                    <span>CODE PERSISTENCE</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded-md font-mono flex items-center gap-1">
+                    <Cloud size={11} />
+                    <span>CLOUD DATABASE</span>
                   </span>
                 </h1>
                 <p className="text-[10px] text-slate-400">
-                  Perubahan langsung tersimpan ke file struktur kode server (<code className="text-emerald-400">products.json</code>)
+                  Tersinkronisasi otomatis via <strong className="text-emerald-400 font-medium">Firebase Firestore</strong> (Vercel & Multi-Browser Ready)
                 </p>
               </div>
             </div>

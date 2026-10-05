@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidProduct(data) {
+      return data.sku is string && data.sku.size() > 0 && data.sku.size() <= 64 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+             data.description is string && data.description.size() <= 20000 &&
+             data.image is string && data.image.size() <= 5000000 &&
+             data.sizes is list && data.sizes.size() <= 50 &&
+             (!('colors' in data) || (data.colors is list && data.colors.size() <= 50)) &&
+             (!('gallery' in data) || (data.gallery is list && data.gallery.size() <= 50));
+    }
+
+    match /products/{productId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(productId) && isValidProduct(request.resource.data);
+      allow delete: if isValidId(productId);
+    }
+  }
+}

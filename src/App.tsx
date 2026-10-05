@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import { Product } from './data/products';
-import { getStoredProducts, fetchServerProducts } from './utils/productStorage';
+import {
+  getStoredProducts,
+  fetchServerProducts,
+  subscribeToFirestoreProducts,
+} from './utils/productStorage';
 import { Language, translations } from './i18n/translations';
 import {
   getLocalizedProduct,
@@ -48,7 +52,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(products.length === 0);
 
   useEffect(() => {
-    // Attempt to load from server/static, but don't hang the UI indefinitely
+    // 1. Initial load from Cloud Firestore / Server
     const loadData = async () => {
       try {
         const serverData = await fetchServerProducts();
@@ -63,10 +67,26 @@ export const App: React.FC = () => {
     };
     
     loadData();
+
+    // 2. Real-time synchronization across all browsers and devices
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = subscribeToFirestoreProducts((liveProducts) => {
+        if (liveProducts && liveProducts.length > 0) {
+          setProducts(liveProducts);
+        }
+        setIsLoading(false);
+      });
+    } catch (e) {
+      console.warn('Real-time sync not active:', e);
+    }
     
     // Safety timeout: ensure loading finishes even if network hangs
-    const timer = setTimeout(() => setIsLoading(false), 5000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => setIsLoading(false), 4000);
+    return () => {
+      clearTimeout(timer);
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Language State

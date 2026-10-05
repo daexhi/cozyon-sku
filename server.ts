@@ -14,13 +14,22 @@ app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 
 const PRODUCTS_FILE_PATH = path.resolve(__dirname, 'src/data/products.json');
+const PUBLIC_PRODUCTS_PATH = path.resolve(__dirname, 'public/data/products.json');
+const DIST_PRODUCTS_PATH = path.resolve(__dirname, 'dist/data/products.json');
+
+// In-memory cache for ultra-fast sync across all active browsers
+let memoryProducts: any[] | null = null;
 
 // Helper to safely read products file
 const readProductsFile = () => {
+  if (memoryProducts && memoryProducts.length > 0) {
+    return memoryProducts;
+  }
   try {
     if (fs.existsSync(PRODUCTS_FILE_PATH)) {
       const data = fs.readFileSync(PRODUCTS_FILE_PATH, 'utf-8');
-      return JSON.parse(data);
+      memoryProducts = JSON.parse(data);
+      return memoryProducts;
     }
   } catch (err) {
     console.error('Error reading products.json:', err);
@@ -31,6 +40,9 @@ const readProductsFile = () => {
 // API: Get products from server code structure
 app.get('/api/products', (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     const products = readProductsFile();
     res.json(products);
   } catch (err) {
@@ -46,14 +58,30 @@ app.post('/api/products', async (req, res) => {
       return res.status(400).json({ error: 'Payload must be an array of products' });
     }
 
-    // Write directly to src/data/products.json (formatted with 2 spaces)
-    await fs.promises.writeFile(
-      PRODUCTS_FILE_PATH,
-      JSON.stringify(newProducts, null, 2),
-      'utf-8'
-    );
+    memoryProducts = newProducts;
+    const jsonContent = JSON.stringify(newProducts, null, 2);
 
-    console.log(`[API] Saved ${newProducts.length} products to ${PRODUCTS_FILE_PATH}`);
+    // 1. Write directly to src/data/products.json
+    await fs.promises.writeFile(PRODUCTS_FILE_PATH, jsonContent, 'utf-8');
+
+    // 2. Also sync to public/data/products.json
+    try {
+      await fs.promises.mkdir(path.dirname(PUBLIC_PRODUCTS_PATH), { recursive: true });
+      await fs.promises.writeFile(PUBLIC_PRODUCTS_PATH, jsonContent, 'utf-8');
+    } catch (e) {
+      console.warn('Could not write to public/data/products.json', e);
+    }
+
+    // 3. Also sync to dist/data/products.json if production build exists
+    try {
+      if (fs.existsSync(path.dirname(DIST_PRODUCTS_PATH))) {
+        await fs.promises.writeFile(DIST_PRODUCTS_PATH, jsonContent, 'utf-8');
+      }
+    } catch (e) {
+      // Ignore if dist doesn't exist yet
+    }
+
+    console.log(`[API] Saved ${newProducts.length} products to all server paths`);
     res.json({ success: true, count: newProducts.length, timestamp: Date.now() });
   } catch (err: any) {
     console.error('Error writing products.json:', err);
