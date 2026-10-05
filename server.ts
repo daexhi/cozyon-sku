@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,62 @@ app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 const PRODUCTS_FILE_PATH = path.resolve(__dirname, 'src/data/products.json');
 const PUBLIC_PRODUCTS_PATH = path.resolve(__dirname, 'public/data/products.json');
 const DIST_PRODUCTS_PATH = path.resolve(__dirname, 'dist/data/products.json');
+
+// Helper to extract SKU suffix for folder naming (e.g. CZN-039 -> 039)
+const getSkuSuffix = (sku: string) => {
+  const parts = sku.split('-');
+  return parts[parts.length - 1] || sku;
+};
+
+// Multer setup for image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const sku = req.body.sku || 'temp';
+    const suffix = getSkuSuffix(sku);
+    const dir = path.resolve(__dirname, 'public/images', suffix);
+    
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    // Keep original name but sanitize it
+    const sku = req.body.sku || 'temp';
+    const cleanName = file.originalname.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    cb(null, `${sku}_${Date.now()}_${cleanName}`);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Hanya file gambar yang diperbolehkan!'));
+    }
+  }
+});
+
+// API: Upload multiple images
+app.post('/api/upload-images', upload.array('images', 5), (req, res) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    const sku = req.body.sku;
+    const suffix = getSkuSuffix(sku);
+    
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'Tidak ada file yang diupload' });
+    }
+
+    const paths = files.map(file => `/images/${suffix}/${file.filename}`);
+    res.json({ success: true, paths });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // In-memory cache for ultra-fast sync across all active browsers
 let memoryProducts: any[] | null = null;

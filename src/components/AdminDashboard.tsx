@@ -1,7 +1,6 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Product } from '../data/products';
 import {
-  availableWarehouseImages,
   saveProductsToCodebase,
   resetStoredProducts,
   saveProductToCloud,
@@ -36,8 +35,17 @@ import {
   Server,
   Cloud,
   Database,
+  GripVertical,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
+
+interface ImageItem {
+  id: string;
+  url: string;
+  file?: File;
+}
 
 interface Props {
   products: Product[];
@@ -60,7 +68,6 @@ export const AdminDashboard: React.FC<Props> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [showImagePicker, setShowImagePicker] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [confirmDeleteSku, setConfirmDeleteSku] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -72,8 +79,7 @@ export const AdminDashboard: React.FC<Props> = ({
   const [formSku, setFormSku] = useState('');
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('');
-  const [formImage, setFormImage] = useState('');
-  const [formGallery, setFormGallery] = useState<string[]>([]);
+  const [formImageItems, setFormImageItems] = useState<ImageItem[]>([]);
   const [formSizes, setFormSizes] = useState<string[]>([]);
   const [formColors, setFormColors] = useState<string[]>([]);
   const [formDescription, setFormDescription] = useState('');
@@ -121,8 +127,11 @@ export const AdminDashboard: React.FC<Props> = ({
     setFormSku(prod.sku);
     setFormName(prod.name);
     setFormCategory(prod.category);
-    setFormImage(prod.image);
-    setFormGallery(prod.gallery ? [...prod.gallery] : [prod.image]);
+    
+    // Initialize image items from gallery or single image
+    const gallery = prod.gallery || (prod.image ? [prod.image] : []);
+    setFormImageItems(gallery.map((url, i) => ({ id: `${Date.now()}-${i}`, url })));
+    
     setFormSizes(prod.sizes ? [...prod.sizes] : []);
     setFormColors(prod.colors ? [...prod.colors] : []);
     setFormDescription(prod.description || '');
@@ -141,13 +150,12 @@ export const AdminDashboard: React.FC<Props> = ({
     const padNum = nextNumber.toString().padStart(3, '0');
     const newSku = `CZN-${padNum}`;
 
-    const defaultImg = availableWarehouseImages[0] || '/images/001/CZN-001-1.png';
     const initialProd: Product = {
       sku: newSku,
       name: `Cozyon Sandal ${newSku}`,
       category: 'Slop',
-      image: defaultImg,
-      gallery: [defaultImg],
+      image: '',
+      gallery: [],
       sizes: ['38', '39', '40', '41', '42'],
       colors: ['Hitam', 'Cream'],
       description: 'Sandal Cozyon dengan material empuk, lentur, ringan dan sol anti-slip.',
@@ -157,8 +165,7 @@ export const AdminDashboard: React.FC<Props> = ({
     setFormSku(newSku);
     setFormName(`Cozyon Sandal ${newSku}`);
     setFormCategory('Slop');
-    setFormImage(defaultImg);
-    setFormGallery([defaultImg]);
+    setFormImageItems([]);
     setFormSizes(['38', '39', '40', '41', '42']);
     setFormColors(['Hitam', 'Cream']);
     setFormDescription(
@@ -177,67 +184,112 @@ export const AdminDashboard: React.FC<Props> = ({
     showToast('Terjemahan EN & ZH otomatis diperbarui!');
   };
 
+  const uploadImagesToServer = async (sku: string, items: ImageItem[]): Promise<string[]> => {
+    const formData = new FormData();
+    formData.append('sku', sku);
+    
+    let hasNewFiles = false;
+    items.forEach(item => {
+      if (item.file) {
+        formData.append('images', item.file);
+        hasNewFiles = true;
+      }
+    });
+
+    if (!hasNewFiles) {
+      return items.map(item => item.url);
+    }
+
+    try {
+      const res = await fetch('/api/upload-images', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error('Gagal upload gambar');
+      
+      const data = await res.json();
+      const serverPaths = data.paths as string[];
+      
+      // Merge server paths back into the correct order
+      let pathIdx = 0;
+      return items.map(item => {
+        if (item.file) {
+          return serverPaths[pathIdx++];
+        }
+        return item.url;
+      });
+    } catch (err) {
+      console.error('Upload error:', err);
+      throw err;
+    }
+  };
+
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formSku.trim()) return;
 
     setIsSaving(true);
 
-    const updatedProduct: Product = {
-      sku: formSku.trim().toUpperCase(),
-      name: formName.trim() || formSku,
-      category: formCategory.trim() || 'General',
-      image: formImage.trim() || availableWarehouseImages[0],
-      gallery: formGallery.length > 0 ? formGallery : [formImage],
-      sizes: formSizes.length > 0 ? formSizes : ['38', '39', '40', '41', '42'],
-      colors: formColors.length > 0 ? formColors : undefined,
-      description: formDescription.trim(),
-      translations: {
-        en: {
-          description: formEnDesc.trim(),
-          colors: translateColors(formColors, 'en'),
-          category: translateCategory(formCategory, 'en'),
-          name: translateProductName(formName, formSku, formCategory, 'en'),
-        },
-        zh: {
-          description: formZhDesc.trim(),
-          colors: translateColors(formColors, 'zh'),
-          category: translateCategory(formCategory, 'zh'),
-          name: translateProductName(formName, formSku, formCategory, 'zh'),
-        },
-      },
-    };
-
-    let nextProducts: Product[];
-    if (isCreatingNew) {
-      const exists = products.some(
-        (p) => p.sku.toLowerCase() === updatedProduct.sku.toLowerCase()
-      );
-      if (exists) {
-        setIsSaving(false);
-        alert(`SKU ${updatedProduct.sku} sudah ada dalam katalog!`);
-        return;
-      }
-      nextProducts = [updatedProduct, ...products];
-    } else {
-      nextProducts = products.map((p) =>
-        p.sku === editingProduct?.sku ? updatedProduct : p
-      );
-    }
-
-    setProducts(nextProducts);
-
-    // Save to Cloud Firestore & Local / Server
     try {
+      // 1. Upload images first if any are new
+      const finalGallery = await uploadImagesToServer(formSku.trim().toUpperCase(), formImageItems);
+      const primaryImage = finalGallery[0] || '';
+
+      const updatedProduct: Product = {
+        sku: formSku.trim().toUpperCase(),
+        name: formName.trim() || formSku,
+        category: formCategory.trim() || 'General',
+        image: primaryImage,
+        gallery: finalGallery,
+        sizes: formSizes.length > 0 ? formSizes : ['38', '39', '40', '41', '42'],
+        colors: formColors.length > 0 ? formColors : undefined,
+        description: formDescription.trim(),
+        translations: {
+          en: {
+            description: formEnDesc.trim(),
+            colors: translateColors(formColors, 'en'),
+            category: translateCategory(formCategory, 'en'),
+            name: translateProductName(formName, formSku, formCategory, 'en'),
+          },
+          zh: {
+            description: formZhDesc.trim(),
+            colors: translateColors(formColors, 'zh'),
+            category: translateCategory(formCategory, 'zh'),
+            name: translateProductName(formName, formSku, formCategory, 'zh'),
+          },
+        },
+      };
+
+      let nextProducts: Product[];
+      if (isCreatingNew) {
+        const exists = products.some(
+          (p) => p.sku.toLowerCase() === updatedProduct.sku.toLowerCase()
+        );
+        if (exists) {
+          setIsSaving(false);
+          alert(`SKU ${updatedProduct.sku} sudah ada dalam katalog!`);
+          return;
+        }
+        nextProducts = [updatedProduct, ...products];
+      } else {
+        nextProducts = products.map((p) =>
+          p.sku === editingProduct?.sku ? updatedProduct : p
+        );
+      }
+
+      setProducts(nextProducts);
+
+      // Save to Cloud Firestore & Local / Server
       await saveProductToCloud(updatedProduct);
       await saveProductsToCodebase(nextProducts);
-      showToast(`✓ SKU ${updatedProduct.sku} tersimpan di Cloud Database & tersinkron ke semua browser!`);
-    } catch (err) {
-      console.error('Failed to save to cloud:', err);
-      showToast(`Tersimpan lokal (${nextProducts.length} SKU).`);
-    } finally {
+      showToast(`✓ SKU ${updatedProduct.sku} tersimpan & gambar ter-upload!`);
       setIsSaving(false);
       setEditingProduct(null);
+    } catch (err: any) {
+      console.error('Failed to save product:', err);
+      alert('Gagal menyimpan produk: ' + err.message);
+      setIsSaving(false);
     }
   };
 
@@ -311,21 +363,45 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files) return;
+    addFilesToImageItems(Array.from(files));
+    e.target.value = '';
+  };
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setFormImage(dataUrl);
-        if (!formGallery.includes(dataUrl)) {
-          setFormGallery([dataUrl, ...formGallery]);
-        }
-        showToast('Foto berhasil diupload!');
-      }
-    };
-    reader.readAsDataURL(file);
+  const addFilesToImageItems = (files: File[]) => {
+    const remainingSlots = 5 - formImageItems.length;
+    const filesToAdd = files.slice(0, remainingSlots);
+
+    if (files.length > remainingSlots) {
+      showToast('Maksimum 5 gambar diperbolehkan');
+    }
+
+    const newItems: ImageItem[] = filesToAdd.map(file => ({
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      url: URL.createObjectURL(file),
+      file
+    }));
+
+    setFormImageItems(prev => [...prev, ...newItems]);
+  };
+
+  const handleRemoveImageItem = (id: string) => {
+    setFormImageItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      addFilesToImageItems(Array.from(files));
+    }
   };
 
   const handleAddSize = () => {
@@ -666,96 +742,96 @@ export const AdminDashboard: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* Main Image Section */}
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
+                {/* Multiple Images Upload & Reorder Section */}
+                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                       <ImageIcon size={14} className="text-emerald-400" />
-                      <span>{t.mainImageUrl}</span>
+                      <span>Upload Gambar SKU (Maks 5)</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowImagePicker(!showImagePicker)}
-                        className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
-                      >
-                        {showImagePicker ? 'Tutup Pilihan' : t.choosePresetImage}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-[11px] font-semibold text-slate-300 hover:text-white px-2 py-1 rounded-lg bg-slate-800"
-                      >
-                        <Upload size={12} className="inline mr-1" />
-                        <span>Upload</span>
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Geser gambar untuk mengatur urutan
+                    </span>
                   </div>
 
-                  <div className="flex gap-3 items-center">
-                    <div className="w-16 h-16 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden shrink-0">
-                      <img
-                        src={formImage}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      value={formImage}
-                      onChange={(e) => setFormImage(e.target.value)}
-                      placeholder="/images/001/CZN-001-1.png atau https://..."
-                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-slate-300 font-mono focus:outline-none focus:border-emerald-500/60"
-                    />
-                  </div>
-
-                  {/* Preset Warehouse Images Grid Picker */}
-                  {showImagePicker && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="p-3 bg-slate-900 rounded-2xl border border-slate-800 max-h-48 overflow-y-auto"
-                    >
-                      <p className="text-[10px] text-slate-400 font-medium mb-2">
-                        Klik gambar gudang untuk menjadikannya foto utama:
-                      </p>
-                      <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
-                        {availableWarehouseImages.map((img) => (
-                          <button
-                            key={img}
-                            type="button"
-                            onClick={() => {
-                              setFormImage(img);
-                              if (!formGallery.includes(img)) {
-                                setFormGallery([...formGallery, img]);
-                              }
-                            }}
-                            className={`aspect-square rounded-lg overflow-hidden border transition-all ${
-                              formImage === img
-                                ? 'border-emerald-500 ring-2 ring-emerald-500/40'
-                                : 'border-slate-800 hover:border-slate-600'
-                            }`}
+                  {/* Dropzone & List */}
+                  <div 
+                    className="space-y-3"
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    {/* Reorderable List */}
+                    {formImageItems.length > 0 && (
+                      <Reorder.Group 
+                        axis="y" 
+                        values={formImageItems} 
+                        onReorder={setFormImageItems}
+                        className="space-y-2"
+                      >
+                        {formImageItems.map((item) => (
+                          <Reorder.Item 
+                            key={item.id} 
+                            value={item}
+                            className="bg-slate-900 border border-slate-800 rounded-xl p-2 flex items-center gap-3 cursor-grab active:cursor-grabbing group"
                           >
-                            <img
-                              src={img}
-                              alt="Preset"
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          </button>
+                            <GripVertical size={16} className="text-slate-600 group-hover:text-slate-400 shrink-0" />
+                            <div className="w-12 h-12 rounded-lg bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                              <img 
+                                src={item.url} 
+                                alt="Preview" 
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {item.file ? item.file.name : (item.url.split('/').pop() || 'Existing Image')}
+                              </p>
+                              {item.file && (
+                                <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-tight">
+                                  New Upload
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImageItem(item.id)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </Reorder.Item>
                         ))}
+                      </Reorder.Group>
+                    )}
+
+                    {/* Upload Trigger / Dropzone Placeholder */}
+                    {formImageItems.length < 5 && (
+                      <div 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-slate-800 rounded-2xl p-8 flex flex-col items-center justify-center gap-2 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all cursor-pointer text-center group"
+                      >
+                        <div className="p-3 rounded-full bg-slate-900 text-slate-400 group-hover:text-emerald-400 group-hover:bg-emerald-400/10 transition-all">
+                          <ImagePlus size={24} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-300">
+                            Klik atau Drag n Drop gambar di sini
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Format JPG, PNG (Maks 5MB per file)
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          multiple
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
                       </div>
-                    </motion.div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 {/* Sizes Tags Input */}
